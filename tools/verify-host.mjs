@@ -7,15 +7,15 @@
  * 函数还在，但 inject 里漏了 sessionController，等于白装。
  *
  * 怎么做的：本地改动包在 ===== LOCAL-PATCH:自动唤醒 START/END ===== 里，
- * 补丁由 profile/patches/dsh-qq-bridge@1.1.2.patch 在 pnpm install 时打上。
- * 这份体检逐条对：
+ * 装机走 profile/vendor 里的 tarball（node tools/deploy.mjs 生成），
+ * 不再靠 pnpm 安装时打补丁。这份体检逐条对：
  *
  *   node tools/verify-host.mjs
  *
  * 退出码 0 = 还在；非 0 = 被覆盖 / 装错副本，按打印的提示恢复。
  *
  * ⚠ 不要用 link: 装这个包。2026-10-30 试过，DSH 的 client-modules 不认符号链接，
- *   web-boot 直接「3 entries did not activate」，网页半边打不开。用 git 依赖 + pnpm patch。
+ *   web-boot 直接「3 entries did not activate」，网页半边打不开。装机走 vendor tgz。
  */
 
 import { readFileSync, existsSync } from 'node:fs'
@@ -81,29 +81,56 @@ if (existsSync(宿主)) {
 // 3. 装的那份到底带不带本地改动
 //    这里不比路径，比内容 —— 装的那份里有拉活 + inject，才算数。
 const DSH家 = process.env.DSH_HOME || 'D:/DSH'
-const 装好 = join(DSH家, 'profiles', 'desktop', 'node_modules', 'dsh-qq-bridge', 'lib', 'host.js')
+const 本包 = JSON.parse(readFileSync(join(包根, 'package.json'), 'utf8'))
+const 装好 = join(DSH家, 'profiles', 'desktop', 'node_modules', 本包.name, 'lib', 'host.js')
 if (!existsSync(装好)) {
   备注('没找到装好的那份（' + 装好 + '），跳过这条')
 } else {
   const 装好源 = readFileSync(装好, 'utf8')
   const 装好有注入 = 注入行(装好源).includes('sessionController')
   if (装好源.includes('拉活agent') && 装好源.includes('LOCAL-PATCH:自动唤醒 START') && 装好有注入) {
-    过('装机目录那份带着本地改动（pnpm patch 生效，inject 也在）')
+    过('装机目录那份带着本地改动（vendor tgz 装出来的，inject 也在）')
   } else {
-    挂('装机那份缺本地改动（补丁没打上，或补丁里漏了 inject）：' + 装好 +
-      ' —— 看 profile/pnpm-workspace.yaml 的 patchedDependencies 和 patches/ 里的补丁')
+    挂('装机那份缺本地改动：' + 装好 + ' —— 跑 node tools/deploy.mjs 重新打包部署')
   }
 }
 
-// 3.5 附赠：dsh-ntr 的 qq 兼容补丁（不是 bridge，但 pnpm 真安装会连带冲掉）
+// 3.2 profile 依赖还指着 vendor tgz 吗
+//     市场更新 / 「重装插件」会把依赖改回版本号或 git 地址，一改回去本地改动就没人装了。
+const 配置路径 = join(DSH家, 'profiles', 'desktop', 'package.json')
+if (existsSync(配置路径)) {
+  const 配置 = JSON.parse(readFileSync(配置路径, 'utf8'))
+  const 依赖 = 配置.dependencies || {}
+  const 本地包 = [本包.name, 'dsh-ntr', 'dsh-whale-memory']
+  const 裸的 = 本地包.filter((n) => 依赖[n] && !String(依赖[n]).startsWith('file:vendor/'))
+  if (裸的.length) {
+    挂('依赖不是 vendor tgz 了：' + 裸的.map((n) => n + '=' + 依赖[n]).join('，') +
+      ' —— 八成是市场更新顶掉了，重装前先跑各自的 tools/deploy.mjs')
+  } else if (依赖[本包.name] === undefined) {
+    挂('profile 依赖里没有 ' + 本包.name + ' —— 先关 DSH，跑 node tools/deploy.mjs')
+  } else {
+    过(本地包.join(' / ') + ' 都指着 profile/vendor 里的 tgz')
+  }
+  const 捆 = 配置.dsh && 配置.dsh.profile && 配置.dsh.profile.bundles
+  if (Array.isArray(捆)) {
+    if (!捆.includes(本包.name)) 挂('dsh.profile.bundles 里没有 ' + 本包.name + ' —— 插件不会被加载')
+    if (本包.name !== 'dsh-qq-bridge' && 捆.includes('dsh-qq-bridge')) 挂('bundles 里还留着旧包名 dsh-qq-bridge —— 先跑 deploy 迁移')
+  }
+  if (本包.name !== 'dsh-qq-bridge' && 依赖['dsh-qq-bridge'] !== undefined) {
+    挂('旧包名 dsh-qq-bridge 还在 profile 依赖里 —— 先关 DSH，跑 node tools/deploy.mjs 迁到 ' + 本包.name)
+  }
+}
+
+// 3.5 附赠：dsh-ntr 的 qq 兼容（不是 bridge，但以前每次 pnpm 安装都会被连带冲掉）
 const ntr目录 = join(DSH家, 'profiles', 'desktop', 'node_modules', 'dsh-ntr')
 const ntr文件 = ['presets/acp/acp-guard.mjs', 'lib/impl.js', 'src/impl.ts']
 if (existsSync(ntr目录)) {
   const 缺 = ntr文件.filter((f) => {
     try { return !readFileSync(join(ntr目录, f), 'utf8').includes("kind === 'qq'") } catch (e) { return true }
   })
-  if (缺.length) 备注('⚠ dsh-ntr 的 qq 兼容补丁不在了（NTR 群会只收不回）：' + 缺.join('、') + ' —— 跑 node tools/repair-bridge.mjs 补回')
-  else 过('dsh-ntr 的 qq 兼容补丁还在（NTR 群能回）')
+  if (缺.length) 备注('⚠ dsh-ntr 的 qq 兼容不在了（NTR 群会只收不回）：' + 缺.join('、') +
+    ' —— 跑 dsh-ntr-local/tools/deploy.mjs 重新部署')
+  else 过('dsh-ntr 的 qq 兼容还在（NTR 群能回）')
 }
 
 // 4. 汇总
@@ -114,10 +141,12 @@ for (const m of 挂了) console.log('[FAIL] ' + m)
 if (挂了.length) {
   console.log('')
   console.log('自动唤醒/本地改动被覆盖了。恢复：')
-  console.log('  · 仓库里只是少了这段：对照 patches/ 里的补丁或上一个提交把 LOCAL-PATCH 块补回来')
-  console.log('  · 装机那份被覆盖：node tools/repair-bridge.mjs（版本一致才从仓库拷回 lib；不要用 pnpm install --force）')
-  console.log('    --force 会跳过补丁，还会把 dsh-ntr 的兼容补丁一起冲掉（10-30 已踩）')
-  console.log('  · 仓库 lib 丢了：node tools/make-patch.mjs 1.1.2 重新生成（会先检查块在不在）')
+  console.log('  · 装机那份不对：先关 DSH，再 node tools/deploy.mjs（重新打包 + 装 + 校验）')
+  console.log('  · 依赖被市场更新顶回版本号/git 地址：同样跑 deploy.mjs，它会改回 file:vendor/…')
+  console.log('  · 仓库 lib 少了自动唤醒那块：对照 git 历史或 profile/patches/*.patch（已标 .obsolete）补回来，')
+  console.log('    补完 inject 里一定要有 sessionController，否则功能等于没装')
+  console.log('  · dsh-ntr 的三处 qq 兼容：改 dsh-ntr-local 里的 lib/impl.js + src/impl.ts + presets/acp/acp-guard.mjs，')
+  console.log('    再跑那边的 node tools/deploy.mjs')
   console.log('  · ⚠ 不要改回 link: —— 2026-10-30 试过，client-modules 不认链接，web-boot 起不来')
   console.log('  · 改完再跑一遍：node tools/verify-host.mjs')
   process.exit(1)

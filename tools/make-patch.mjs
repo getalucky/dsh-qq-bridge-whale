@@ -15,6 +15,7 @@ import { fileURLToPath } from 'node:url'
 import { tmpdir } from 'node:os'
 
 const 包根 = resolve(dirname(fileURLToPath(import.meta.url)), '..')
+const 包名 = JSON.parse(readFileSync(join(包根, 'package.json'), 'utf8')).name
 const 版本 = process.argv[2] || '1.1.2'
 const 上游目录 = join(包根, 'upstream', 版本)
 if (!existsSync(上游目录)) {
@@ -66,8 +67,8 @@ if (!process.argv.includes('--force')) {
   }
 }
 
-const 目标 = join(补丁目录, 'dsh-qq-bridge@' + 版本 + '.patch')
-const 仓库副本 = join(包根, 'patches', 'dsh-qq-bridge@' + 版本 + '.patch')
+const 目标 = join(补丁目录, 包名 + '@' + 版本 + '.patch')
+const 仓库副本 = join(包根, 'patches', 包名 + '@' + 版本 + '.patch')
 mkdirSync(join(包根, 'patches'), { recursive: true })
 writeFileSync(目标, 成品, 'utf8')
 writeFileSync(仓库副本, 成品, 'utf8')

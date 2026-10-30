@@ -1,3 +1,15 @@
 lib/*.bak-*
 tools/语音/*.bak*
+.pack/
 
+# 本机运行数据（配置里有 NapCat 令牌和 QQ 号，别进仓库）
+node_modules/
+vendor/
+*.tgz
+*.log
+qq-bridge-config.json
+qq-bridge-state.json
+qq-bridge-received.json
+qq-bridge-inbox/
+.env
+*.local.json

@@ -1,0 +1,48 @@
+name: release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  pack:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: 版本与 tag 对齐
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          node -e "
+            const pkg = require('./package.json');
+            const tag = process.env.TAG.replace(/^v/, '');
+            if (pkg.version !== tag) {
+              console.error('package.json=' + pkg.version + ' / tag=' + tag + '，先改版本再打 tag');
+              process.exit(1);
+            }
+          "
+
+      - name: 自动唤醒还在
+        run: |
+          grep -q "LOCAL-PATCH:自动唤醒 START" lib/host.js
+          grep -q "sessionController" lib/host.js
+          node --check lib/host.js
+          node --check lib/client.js
+
+      - name: 打包
+        run: npm pack
+
+      - name: 发 Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: '*.tgz'
+          generate_release_notes: true

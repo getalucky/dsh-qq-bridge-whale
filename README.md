@@ -1,4 +1,6 @@
-# 通到 QQ（dsh-qq-bridge）
+# 通到 QQ（dsh-qq-bridge-whale）
+
+> **这是 [Yuuyuko-uu/dsh-qq-bridge](https://github.com/Yuuyuko-uu/dsh-qq-bridge) 的分叉**，基于上游 1.1.2，包名改成 `dsh-qq-bridge-whale`。本地改动：会话没开着时自动唤醒、批量拉取、长回复拆段、失败诊断等。这个仓库按自己的节奏维护，**不会自动跟上游更新**；想追上游请去原仓库。
 
 让 DSH 里的 **AI 伙伴**和 QQ 连起来：它在 DSH 里说完话，自动发到 QQ。
 
@@ -32,12 +34,12 @@
 
 ## 适配哪个 DSH 版本（不用操心）
 
-这个插件**跟着 DSH 一起更新**：作者这边跑的就是最新版的 DSH，**最新版插件永远是给最新版 DSH 写的**。
+这个分叉基于上游 1.1.2，**不承诺跟着上游或 DSH 的最新版走**。
 
-所以看到「不适配 / 不支持」之类的提示，基本都是**装到了旧版本** —— 升级到最新版、重启一次 DSH 就好。
-真遇到新版对不上（比如 DSH 刚升级、插件还没跟上），提个 issue，作者会跟着改。
+遇到不兼容，先确认装的是不是这个分叉的版本；上游的新功能不会自动出现在这里。
+要追上游的修复，请去原仓库或自己合并。
 
-当前实测对照：插件 **1.0.3** ↔ DSH **0.2.1-rc.3**（2026-10-26）
+当前实测对照：插件 **1.1.2-whale.1** ↔ DSH **0.2.1-rc.3**（2026-10-30）
 
 ## 装
 
@@ -48,16 +50,21 @@
 打开 **设置 → 插件 → 安装**，把这一行填进去：
 
 ```
-github:Yuuyuko-uu/dsh-qq-bridge
+github:getalucky/dsh-qq-bridge-whale
 ```
 
 或者命令行（`--profile` 照你平时那个写，桌面端一般 `desktop`，网页端 `web`）：
 
 ```bash
-dsh plugin --profile desktop add github:Yuuyuko-uu/dsh-qq-bridge
+dsh plugin --profile desktop add github:getalucky/dsh-qq-bridge-whale
 ```
 
 装完**重启一次 DSH**，然后进 **设置 → 通到 QQ**。
+
+> 从上游搬过来：先卸掉旧包 `dsh-qq-bridge`（两个包会抢同一组路由和设置项），再装这个。
+> 配置 `%DSH_HOME%\qq-bridge-config.json` 直接沿用，绑定和会话不用重配。
+
+> 机器上没装 git 的话，用 Releases 里的 tgz：`https://github.com/getalucky/dsh-qq-bridge-whale/releases`。
 
 > 光装插件还不够：还得有一个 QQ 后端（默认 `127.0.0.1:3000`），见下面「它依赖什么」那一节。
 
@@ -110,8 +117,8 @@ $p = "把上面 BOM=True 那一行的路径粘到这里"
 命令行（`--profile` 照你平时那个写，桌面端一般 `desktop`、网页端 `web`）：
 
 ```bash
-dsh plugin --profile desktop remove dsh-qq-bridge
-dsh plugin --profile desktop add github:Yuuyuko-uu/dsh-qq-bridge
+dsh plugin --profile desktop remove dsh-qq-bridge-whale
+dsh plugin --profile desktop add github:getalucky/dsh-qq-bridge-whale
 ```
 
 > ⚠️ **必须先卸再装**：直接装可能拿到缓存里的旧副本，装完还是老的。

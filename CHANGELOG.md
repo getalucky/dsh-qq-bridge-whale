@@ -1,3 +1,12 @@
+## 1.1.2-whale.1 — 2026-10-30
+
+**大肥鱼分叉：包名改成 `dsh-qq-bridge-whale`**
+
+- 与上游 `dsh-qq-bridge` 分名，市场和 pnpm 更新不会再把它当成上游包覆盖。
+- 保留本地改动：会话没开着时自动唤醒（`sessionController.resolveAgent`）、批量拉取、长回复拆段、失败诊断。
+- 安装/更新走本仓库的 Release tarball 或 `github:getalucky/dsh-qq-bridge-whale`。
+- 配置仍是 `%DSH_HOME%\qq-bridge-config.json`，绑定和会话不迁移。
+
 ## 1.1.2 — 2026-10-28
 
 **人设加了个「现在就生效」按钮：改完不用等 QQ 来信**

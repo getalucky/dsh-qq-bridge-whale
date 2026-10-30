@@ -1,5 +1,5 @@
 /**
- * repair-bridge.mjs —— 装机目录被上游覆盖时，把本地版 lib 拷回去（带版本闸门）
+ * repair-bridge.mjs —— 装机目录被覆盖时，把本地版 lib 拷回去（带版本闸门）
  *
  * 为什么不用 pnpm：
  *   · `pnpm install` 状态没变时会说 "Already up to date"，不会重装；
@@ -8,7 +8,7 @@
  *
  * 这里只做一件确定的事：版本号一致才从仓库拷 lib/host.js + lib/client.js，
  * 先备份、先 node --check，失败自动回滚；版本不一致直接拒绝（防止拿旧版盖新版）。
- * 正常安装仍然走 pnpm patch（profile/patches/dsh-qq-bridge@1.1.2.patch）。
+ * 正常安装走 vendor tgz（node tools/deploy.mjs）；这里只做应急回拷。
  *
  * 用法：node tools/repair-bridge.mjs
  */
@@ -20,7 +20,8 @@ import { fileURLToPath } from 'node:url'
 
 const 包根 = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const DSH家 = process.env.DSH_HOME || 'D:/DSH'
-const 装机 = join(DSH家, 'profiles', 'desktop', 'node_modules', 'dsh-qq-bridge')
+const 本包 = JSON.parse(readFileSync(join(包根, 'package.json'), 'utf8'))
+const 装机 = join(DSH家, 'profiles', 'desktop', 'node_modules', 本包.name)
 const 戳 = new Date().toISOString().replace(/[:.]/g, '-')
 
 const 读版本 = (目录) => {
@@ -30,7 +31,7 @@ const 本版 = 读版本(包根)
 const 装版 = 读版本(装机)
 
 if (!existsSync(装机)) {
-  console.error('装机目录不存在：' + 装机 + ' —— 先在 profile 里正常 pnpm install')
+  console.error('装机目录不存在：' + 装机 + ' —— 先关 DSH，跑 node tools/deploy.mjs')
   process.exit(2)
 }
 if (!本版 || 本版 !== 装版) {
@@ -71,7 +72,7 @@ if (改过.length) {
 
 // dsh-ntr 安全网：只在本机是 0.2.1 时才补快照
 const ntr = join(装机, '..', 'dsh-ntr')
-const 快照 = 'D:/Workspace/patches/dsh-ntr'
+const 快照 = join(dirname(DSH家), 'Workspace', 'patches', 'dsh-ntr')
 if (existsSync(ntr) && existsSync(快照) && 读版本(ntr) === '0.2.1') {
   for (const f of ['presets/acp/acp-guard.mjs', 'lib/impl.js', 'src/impl.ts']) {
     const 标 = join(ntr, f)
