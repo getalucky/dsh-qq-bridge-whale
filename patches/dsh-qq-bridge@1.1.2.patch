@@ -1,0 +1,133 @@
+diff --git a/lib/host.js b/lib/host.js
+index 6f90264..3914fa6 100644
+--- a/lib/host.js
++++ b/lib/host.js
+@@ -19,7 +19,10 @@ import { createSelfUpdate } from './selfupdate.mjs'
+ export const name = 'qq-bridge'
+ 
+ /** 需要宿主提供：webServer（路由）+ sessions/sessionTitle（目标会话清单 + 标题）+ agents（followup）+ timer（轮询收消息）+ attachments（图片）。 */
+-export const inject = ['agents', 'sessions', 'sessionTitle', 'webServer', 'timer', 'workspaceRegistry', 'attachments', 'tools']
++// ⚠ 2026-10-30：sessionController 必须写进 inject —— 不写的话 ctx.sessionController / ctx.get()
++//   都拿不到，`拉活agent` 每次都停在「宿主没给 sessionController」，自动唤醒等于没装。
++//   这条和下面的 LOCAL-PATCH 块是一套的，重打补丁时别漏。
++export const inject = ['agents', 'sessions', 'sessionTitle', 'webServer', 'timer', 'workspaceRegistry', 'attachments', 'tools', 'sessionController']
+ 
+ // ---------- 常量 ----------
+ 
+@@ -917,6 +920,9 @@ export function apply(ctx) {
+     }
+   }
+ 
++  /** 最近一轮的结局（轮号 / completed|blocked|error|aborted / 错因）—— 诊断用，不参与收发 */
++  const 最近一轮结果 = new Map() // 会话键 -> { 轮, 因, 错, 时 }
++
+   /** 盯会话事件：记住这一轮最后一句，在 turn/end 时落地。 */
+   function 收到事件(session, event) {
+     const 配置 = 读配置()
+@@ -955,7 +961,15 @@ export function apply(ctx) {
+ 
+     if (event && event.type === 'turn/end') {
+       const d = event.data || {}
+-      const 完成 = !!(d.reason && d.reason.kind === 'completed')
++      const 因 = String((d.reason && d.reason.kind) || '?')
++      const 报错 = d.reason && d.reason.error
++      // ⭐ 2026-10-30（她报的「接受消息不回复」）：以前只认 completed，blocked / error 一声不吭 ——
++      //    看上去就是「消息进来了，人没回来」。现在把宿主给的原因原样记下来，日志里能直接看出是哪一步断的。
++      最近一轮结果.set(键, { 轮: d.turn, 因, 错: 报错 && (报错.message || 报错.code) ? String(报错.message || 报错.code).slice(0, 200) : '', 时: Date.now() })
++      if (因 !== 'completed' && 因 !== 'aborted') {
++        记账('⚠ 这一轮没跑起来（' + 因 + '）' + (报错 && 报错.message ? '：' + String(报错.message).slice(0, 160) : '') + ' —— 模型没出话，QQ 那边不会回（' + 短id(键) + '）')
++      }
++      const 完成 = 因 === 'completed'
+       const 有东西 = 上一轮.文本 || (上一轮.图们 && 上一轮.图们.length)
+       // ⚠ 去重的键必须是「会话 + 轮号」：只按轮号的话，换过目标会话就会静默漏发
+       const 轮标 = 键 + ':' + String(d.turn)
+@@ -1029,6 +1043,44 @@ export function apply(ctx) {
+     return undefined
+   }
+ 
++  // ===== LOCAL-PATCH:自动唤醒 START =====
++  // 本地改动，上游 1.1.2 没有。重写 / 合并这个文件时，START 到 END 整块原样保留；
++  // 改完跑 `node tools/verify-host.mjs` 自检。
++  // ⭐ 2026-10-30（她报的「bridge 又不会主动唤醒了」）：QQ 来信时那间会话没开着（DSH 重启过、没人点过它），
++  //    以前 10-28 打过「自动拉活」补丁，10-29 批量改写把它盖掉了 —— 现在只会刷「先把它打开」。
++  //    这里用宿主自己的 sessionController.resolveAgent：它会把会话 resume 起来，返回 { agent } 或 { error }。
++  const 拉活冷却 = new Map() // 会话键 -> 下次允许再试的毫秒
++  const 拉活agent = async (id) => {
++    const 键 = String(id)
++    const 现在 = Date.now()
++    if ((拉活冷却.get(键) || 0) > 现在) return undefined
++    let 控制器
++    try { 控制器 = ctx.sessionController || ctx.get('sessionController') } catch (error) { 控制器 = undefined }
++    if (!控制器 || typeof 控制器.resolveAgent !== 'function') {
++      拉活冷却.set(键, 现在 + 60000)
++      记账('想自动唤醒会话 ' + 短id(键) + '：宿主没给 sessionController')
++      return undefined
++    }
++    try {
++      const 结果 = await 控制器.resolveAgent(键)
++      if (结果 && 结果.agent) {
++        拉活冷却.delete(键)
++        记账('会话 ' + 短id(键) + ' 没开着，已经让宿主把它唤醒了')
++        return 结果.agent
++      }
++      // resolveAgent 失败是**返回 { error }**，不抛异常 —— 不取出来就又是静默的
++      const 错 = 结果 && 结果.error
++      拉活冷却.set(键, 现在 + 30000)
++      记账('想自动唤醒会话 ' + 短id(键) + ' 但没成功：' + String((错 && (错.message || 错.code)) || 错 || '没返回 agent 也没返回 error'))
++    } catch (error) {
++      拉活冷却.set(键, 现在 + 30000)
++      记账('想自动唤醒会话 ' + 短id(键) + ' 但报错：' + String((error && error.message) || error))
++    }
++    return undefined
++  }
++
++  // ===== LOCAL-PATCH:自动唤醒 END =====
++
+   const 新id = () => {
+     try {
+       return randomUUID()
+@@ -1391,6 +1443,31 @@ export function apply(ctx) {
+   // ⭐ 1.1.0：诊断用 —— 人设能不能挂到「活着的会话」的系统提示词上？
+   //   挂一段探针字进去，按几种 scope 装配一遍看它在不在；撤掉再看一遍；顺手看会不会漏到别的会话。
+   //   设置页不调它，只在排查时手动打一次。人设最终走哪条路由 备人设() 自己决定（也会验）。
++  // ⭐ 2026-10-30：一眼看清「这个绑定为什么收消息不回」——
++  //   会话活没活着 / 最近一轮是什么结局（blocked 多半是 agent 预设或模型没起来）。
++  路线(`${路由前缀}/session-health`, async (req, res) => {
++    await 读体(req)
++    const 配置 = 读配置()
++    const 出 = []
++    for (const 行 of 配置.绑定 || []) {
++      const 会话 = String((行 && 行.会话) || '')
++      const agent = 会话 ? 找agent(会话) : undefined
++      const 键 = 会话键(会话)
++      const 最近 = 最近一轮结果.get(键) || null
++      let 预设 = ''
++      try {
++        const s = agent && agent.session
++        预设 = String((s && (s.agentPreset || (s.metadata && s.metadata.agentPreset))) || '')
++      } catch (error) {}
++      出.push({
++        聊天: (行.类型 === '群' ? '群 ' : '私聊 ') + String(行.号码 || '?'),
++        会话, 名字: (行 && 行.称呼) || '', agent活着: Boolean(agent), 预设,
++        最近一轮: 最近 ? { 轮: 最近.轮, 结局: 最近.因, 错: 最近.错, 秒前: Math.round((Date.now() - 最近.时) / 1000) } : null,
++      })
++    }
++    return 回(res, { ok: true, 绑定: 出 })
++  })
++
+   路线(`${路由前缀}/persona-probe`, async (req, res) => {
+     await 读体(req)
+     const 出 = { ok: true, 会话们: [], 结果: null }
+@@ -1620,8 +1697,10 @@ export function apply(ctx) {
+     const 这间 = String((这条 && 这条.会话) || 配置.私聊会话 || '')
+     if (!这间) return { ok: false, 说: '还没绑任何聊天（私聊或群）' }
+     if (!配置.总开关) return { ok: false, 说: '总开关关着，先打开' }
+-    const agent = 找agent(这间)
+-    if (!agent) return { ok: false, 说: `那间会话现在没活着（${短id(这间)}），先把它打开` }
++    // ⭐ 2026-10-30：没开着就去唤醒它（人不在电脑前，不能指望她手动点开）
++    // LOCAL-PATCH:自动唤醒 —— 这一行别删（会话没开着时靠它拉活；删了就只有「先打开」）
++    const agent = 找agent(这间) || await 拉活agent(这间)
++    if (!agent) return { ok: false, 说: `那间会话现在没活着（${短id(这间)}），自动唤醒也没成功` }
+ 
+     // ⭐ 1.1.0：这一段聊天的人设（这一行自己写了就用它自己的，没写就用总的那份）
+     const 人设文 = 配置.人设开
