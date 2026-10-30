@@ -7,20 +7,8 @@ node tools\verify-host.mjs
 if not errorlevel 1 goto ok
 
 echo.
-echo 被覆盖了，正在按 pnpm patch 重装（不改代码、不动 client.js）...
-set "PROFILE=%DSH_HOME%\profiles\desktop"
-if "%DSH_HOME%"=="" set "PROFILE=D:\DSH\profiles\desktop"
-if not exist "%PROFILE%\package.json" (
-  echo 找不到 profile：%PROFILE%
-  goto fail
-)
-cd /d "%PROFILE%"
-call pnpm install --force
-if errorlevel 1 goto fail
-
-cd /d "%~dp0.."
-echo.
-node tools\verify-host.mjs
+echo 被覆盖了，正在从仓库拷回 lib（版本一致才拷，不动 client.js）...
+node tools\repair-bridge.mjs
 if errorlevel 1 goto fail
 
 :ok
