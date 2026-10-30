@@ -95,6 +95,17 @@ if (!existsSync(装好)) {
   }
 }
 
+// 3.5 附赠：dsh-ntr 的 qq 兼容补丁（不是 bridge，但 pnpm 真安装会连带冲掉）
+const ntr目录 = join(DSH家, 'profiles', 'desktop', 'node_modules', 'dsh-ntr')
+const ntr文件 = ['presets/acp/acp-guard.mjs', 'lib/impl.js', 'src/impl.ts']
+if (existsSync(ntr目录)) {
+  const 缺 = ntr文件.filter((f) => {
+    try { return !readFileSync(join(ntr目录, f), 'utf8').includes("kind === 'qq'") } catch (e) { return true }
+  })
+  if (缺.length) 备注('⚠ dsh-ntr 的 qq 兼容补丁不在了（NTR 群会只收不回）：' + 缺.join('、') + ' —— 跑 node tools/repair-bridge.mjs 补回')
+  else 过('dsh-ntr 的 qq 兼容补丁还在（NTR 群能回）')
+}
+
 // 4. 汇总
 for (const m of 通过) console.log('[ok]   ' + m)
 for (const m of 说明) console.log('[note] ' + m)
