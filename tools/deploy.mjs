@@ -13,6 +13,12 @@
  *
  * 用法：
  *   node tools/deploy.mjs        （或双击 tools/deploy.cmd）
+ *   node tools/deploy.mjs --dry-run       只打包到 .pack，不碰装机
+ *   node tools/deploy.mjs --backup-only   只存一份配置快照，不部署
+ *
+ * 配置快照：每次部署前会把 DSH_HOME/qq-bridge-config.json 拷到
+ * DSH_HOME/qq-bridge-config-backups/，文件名带时间戳，保留最近 50 份。
+ * 那份文件里有令牌和 QQ 号，所以只放本地，不进 git。
  *
  * 要求：先关掉 DSH。安装会重写 profile/node_modules，运行中装容易触发同类崩溃。
  * 装完再打开 DSH；以后每次改完 lib/ 都跑一次，不跑就还是旧代码。
@@ -114,9 +120,63 @@ function 要装的() {
   return 结果
 }
 
+// ---------------------------------------------------------------- 配置快照
+
+// 运行时配置里有令牌和 QQ 号，不能进 git；但设置页改了什么以前没人记账。
+// 每次部署前存一份带时间戳的快照，顺手把跟上一份的差异打出来，出问题能倒推是哪次改坏的。
+const 桥配置 = join(DSH家, 'qq-bridge-config.json')
+const 配置备份目录 = join(DSH家, 'qq-bridge-config-backups')
+const 快照名 = (名) => /^qq-bridge-config-\d{14}\.json$/.test(名)
+
+function 配置差异(旧文本, 新文本) {
+  try {
+    const 旧 = JSON.parse(旧文本)
+    const 新 = JSON.parse(新文本)
+    const 变 = []
+    for (const 键 of new Set([...Object.keys(旧), ...Object.keys(新)])) {
+      if (JSON.stringify(旧[键]) !== JSON.stringify(新[键])) 变.push(键)
+    }
+    return 变
+  } catch {
+    return null // 旧快照坏了就当没有，不拦部署
+  }
+}
+
+function 备份配置() {
+  if (!existsSync(桥配置)) {
+    console.log('      没有 qq-bridge-config.json，跳过')
+    return
+  }
+  mkdirSync(配置备份目录, { recursive: true })
+  const 现有 = readdirSync(配置备份目录).filter(快照名).sort()
+  const 最新 = 现有.at(-1)
+  const 当前文本 = readFileSync(桥配置, 'utf8')
+  if (最新 && readFileSync(join(配置备份目录, 最新), 'utf8') === 当前文本) {
+    console.log('      跟上一份一致，不重复存（' + 最新 + '）')
+    return
+  }
+  if (最新) {
+    const 变 = 配置差异(readFileSync(join(配置备份目录, 最新), 'utf8'), 当前文本)
+    if (变 && 变.length) console.log('      比 ' + 最新 + ' 改了：' + 变.join('、'))
+    else if (变) console.log('      比 ' + 最新 + ' 没有字段变化（只是格式/顺序不同）')
+  }
+  const 名 = 'qq-bridge-config-' + new Date().toLocaleString('sv-SE').replace(/[-: ]/g, '').slice(0, 14) + '.json'
+  copyFileSync(桥配置, join(配置备份目录, 名))
+  const 总数 = 现有.length + 1
+  console.log('      存了 ' + 名 + (总数 > 50 ? '（只留最近 50 份）' : '（共 ' + 总数 + ' 份）'))
+  for (const 旧 of 现有.slice(0, Math.max(0, 总数 - 50))) rmSync(join(配置备份目录, 旧), { force: true })
+}
+
 // ---------------------------------------------------------------- 前置检查
 
 const 试跑 = process.argv.includes('--dry-run')
+const 只备份 = process.argv.includes('--backup-only')
+
+if (只备份) {
+  console.log('备份 qq-bridge-config.json')
+  备份配置()
+  process.exit(0)
+}
 
 if (!试跑 && DSH在跑()) {
   console.error('\nDSH 正在运行。先把它关掉，再跑这个脚本；装完再打开。')
@@ -149,6 +209,11 @@ const 时间 = new Date().toLocaleString('sv-SE').replace(/[-: ]/g, '').slice(0,
 const 暂存 = join(tmpdir(), 'dsh-qq-bridge-pack-' + Date.now())
 const 打包根 = join(暂存, 'pkg')
 mkdirSync(打包根, { recursive: true })
+
+if (!试跑) {
+  console.log('\n[配置] 快照 qq-bridge-config.json')
+  备份配置()
+}
 
 console.log('\n[1/5] 准备打包目录（按 package.json 的 files，剔掉 *.bak-*）')
 const 清单 = 要装的()
