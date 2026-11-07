@@ -38,10 +38,10 @@ import {
 } from 'node:fs'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { tmpdir } from 'node:os'
+import { homedir, tmpdir } from 'node:os'
 
 const 根 = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-const DSH家 = process.env.DSH_HOME || 'D:/DSH'
+const DSH家 = process.env.DSH_HOME || join(homedir(), '.dsh')
 const profile = join(DSH家, 'profiles', 'desktop')
 const vendor = join(profile, 'vendor')
 const 包 = JSON.parse(readFileSync(join(根, 'package.json'), 'utf8'))

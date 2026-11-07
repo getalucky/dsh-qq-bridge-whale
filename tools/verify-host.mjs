@@ -22,6 +22,7 @@ import { readFileSync, existsSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { homedir } from 'node:os'
 
 const 包根 = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const 宿主 = join(包根, 'lib', 'host.js')
@@ -80,7 +81,7 @@ if (existsSync(宿主)) {
 
 // 3. 装的那份到底带不带本地改动
 //    这里不比路径，比内容 —— 装的那份里有拉活 + inject，才算数。
-const DSH家 = process.env.DSH_HOME || 'D:/DSH'
+const DSH家 = process.env.DSH_HOME || join(homedir(), '.dsh')
 const 本包 = JSON.parse(readFileSync(join(包根, 'package.json'), 'utf8'))
 const 装好 = join(DSH家, 'profiles', 'desktop', 'node_modules', 本包.name, 'lib', 'host.js')
 if (!existsSync(装好)) {

@@ -17,9 +17,10 @@ import { readFileSync, writeFileSync, existsSync, copyFileSync } from 'node:fs'
 import { execFileSync } from 'node:child_process'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { homedir } from 'node:os'
 
 const 包根 = resolve(dirname(fileURLToPath(import.meta.url)), '..')
-const DSH家 = process.env.DSH_HOME || 'D:/DSH'
+const DSH家 = process.env.DSH_HOME || join(homedir(), '.dsh')
 const 本包 = JSON.parse(readFileSync(join(包根, 'package.json'), 'utf8'))
 const 装机 = join(DSH家, 'profiles', 'desktop', 'node_modules', 本包.name)
 const 戳 = new Date().toISOString().replace(/[:.]/g, '-')

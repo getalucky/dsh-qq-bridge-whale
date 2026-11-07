@@ -12,7 +12,7 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync, rmSync, cpSync } fr
 import { execFileSync } from 'node:child_process'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { tmpdir } from 'node:os'
+import { homedir, tmpdir } from 'node:os'
 
 const 包根 = resolve(dirname(fileURLToPath(import.meta.url)), '..')
 const 包名 = JSON.parse(readFileSync(join(包根, 'package.json'), 'utf8')).name
@@ -23,9 +23,8 @@ if (!existsSync(上游目录)) {
   process.exit(1)
 }
 
-const 补丁目录 = process.env.DSH_HOME
-  ? join(process.env.DSH_HOME, 'profiles', 'desktop', 'patches')
-  : 'D:/DSH/profiles/desktop/patches'
+const DSH家 = process.env.DSH_HOME || join(homedir(), '.dsh')
+const 补丁目录 = join(DSH家, 'profiles', 'desktop', 'patches')
 mkdirSync(补丁目录, { recursive: true })
 
 const 临时 = join(tmpdir(), 'qq-patch-' + Date.now())
